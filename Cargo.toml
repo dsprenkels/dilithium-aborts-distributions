@@ -1,0 +1,12 @@
+[package]
+name = "aborts-distributions"
+version = "0.1.0"
+edition = "2018"
+authors = ["Daan Sprenkels <daan@dsprenkels.com>"]
+
+[dependencies]
+itertools = "0.10.1"
+
+[profile.release]
+lto = "thin"
+overflow-checks = true
