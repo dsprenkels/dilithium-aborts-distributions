@@ -1,4 +1,4 @@
-use num_bigint::{BigUint, ToBigUint};
+use num::{bigint::ToBigUint, BigUint, Integer};
 use std::{collections::BTreeMap, convert::TryInto};
 
 const BETA: i32 = 2;
@@ -43,7 +43,7 @@ const GAMMA1: i32 = 5;
 const ORD_B: i32 = 2 * BETA - 1;
 const ORD_Y: i32 = 2 * GAMMA1;
 
-type CounterMap = BTreeMap<(i32, i32, i32), num_bigint::BigUint>;
+type CounterMap = BTreeMap<(i32, i32, i32), num::BigUint>;
 
 fn z_is_in_bounds(z: i32) -> bool {
     z.abs() < GAMMA1 - BETA
@@ -65,24 +65,20 @@ fn dilithium_ztrick(y1: i32, y2: i32, y1p: i32) -> CounterMap {
     // We already know the values of the inputs, they are (y1, y2) and
     // (y1p, y2), so we only need to iterate over two challenge values.
     for (c, cp) in itertools::iproduct!(-BETA + 1..BETA, -BETA + 1..BETA) {
-        let mut abort = false;
+        let mut c_used = c;
         let mut z1 = y1 + c;
         let mut z2 = y2 + c;
         if !z_is_in_bounds(z1) {
             // z1 is not in bounds; resample y1.
+            c_used = cp;
             z1 = y1p + cp;
             z2 = y2 + cp;
             if !z_is_in_bounds(z1) || !z_is_in_bounds(z2) {
                 // After two iterations, still no valid signature.
-                abort = true;
+                continue;
             }
         } else if !z_is_in_bounds(z2) {
             // We already saw z1, so both y1 and y2 will be resampled.
-            abort = true;
-        }
-
-        if abort {
-            // This signature will not be output.
             continue;
         }
 
@@ -90,13 +86,13 @@ fn dilithium_ztrick(y1: i32, y2: i32, y1p: i32) -> CounterMap {
             // Case 1
             let programmed = (ORD_Y * ORD_Y - 2).try_into().unwrap();
             let count = ORD_B.to_biguint().unwrap().pow(programmed);
-            count_signature(z1, z2, cp, count);
+            count_signature(z1, z2, c_used, count);
             continue;
         } else if (y1, y2) == (y1p, y2) && c == cp {
             // Case 2
             let programmed = ((ORD_Y * ORD_Y) - 1).try_into().unwrap();
             let count = ORD_B.to_biguint().unwrap().pow(programmed);
-            count_signature(z1, z2, cp, count);
+            count_signature(z1, z2, c_used, count);
             continue;
         } else if (y1, y2) == (y1p, y2) && c != cp {
             // Case 3
@@ -125,30 +121,25 @@ fn dilithium_vanilla(y1: i32, y2: i32, y1p: i32) -> CounterMap {
     // We already know the values of the inputs, they are (y1, y2) and
     // (y1p, y2), so we only need to iterate over two challenge values.
     for (c, cp) in itertools::iproduct!(-BETA + 1..BETA, -BETA + 1..BETA) {
-        let mut abort = false;
         let z1 = y1 + c;
         let z2 = y2 + c;
         let _z1p = y1p + cp;
         let _z2p = y2 + cp;
         if !z_is_in_bounds(z1) || !z_is_in_bounds(z2) {
-            abort = true;
-        }
-
-        if abort {
             // This signature will not be output.
             continue;
         }
-        
+
         if (y1, y2) != (y1p, y2) {
             // Case 1.
             let programmed = (ORD_Y * ORD_Y) as u32 - 2;
             let count = ORD_B.to_biguint().unwrap().pow(programmed);
-            count_signature(z1, z2, cp, count);
+            count_signature(z1, z2, c, count);
         } else if (y1, y2) == (y1p, y2) && c == cp {
             // Case 2.
             let programmed = (ORD_Y * ORD_Y) as u32 - 1;
             let count = ORD_B.to_biguint().unwrap().pow(programmed);
-            count_signature(z1, z2, cp, count);
+            count_signature(z1, z2, c, count);
             continue;
         } else if (y1, y2) == (y1p, y2) && c != cp {
             // Case 3.
@@ -167,7 +158,11 @@ where
     K: std::fmt::Debug,
     V: std::fmt::Debug + PartialEq,
 {
-    let (_, baseline) = iter.next().expect("empty map");
+    let (_, baseline) = if let Some(item) = iter.next() {
+        item
+    } else {
+        return true;
+    };
     while let Some((k, v)) = iter.next() {
         if v != baseline {
             eprintln!(
@@ -187,40 +182,79 @@ fn merge_results(map: &mut CounterMap, other: &CounterMap) {
     }
 }
 
+// fn main() {
+//     let mut vanilla_results = BTreeMap::<_, BigUint>::new();
+//     for (y1, y2, y1p) in itertools::iproduct!(
+//         (-GAMMA1 + 1..=GAMMA1),
+//         (-GAMMA1 + 1..=GAMMA1),
+//         (-GAMMA1 + 1..=GAMMA1)
+//     ) {
+//         merge_results(&mut vanilla_results, &dilithium_vanilla(y1, y2, y1p));
+//     }
+
+//     let mut ztrick_results = BTreeMap::new();
+//     for (y1, y2, y1p) in itertools::iproduct!(
+//         (-GAMMA1 + 1..=GAMMA1),
+//         (-GAMMA1 + 1..=GAMMA1),
+//         (-GAMMA1 + 1..=GAMMA1)
+//     ) {
+//         merge_results(&mut ztrick_results, &dilithium_ztrick(y1, y2, y1p));
+//     }
+
+//     eprintln!("vanilla:");
+//     dbg!(is_uniform(&mut vanilla_results.iter()));
+
+//     eprintln!("ztrick:");
+//     dbg!(is_uniform(&mut ztrick_results.iter()));
+
+//     // Print the amount of possible signatures for this tuple.
+//     eprintln!("(z1, z2, c): [vanilla], [ztrick]");
+//     for k in vanilla_results.keys() {
+//         eprintln!(
+//             "{:?}: {}, {}",
+//             k,
+//             vanilla_results.get(k).map(|x| x).unwrap(),
+//             ztrick_results.get(k).map(|x| x).unwrap()
+//         );
+//     }
+
+//     dbg!(GAMMA1, BETA);
+//     let mut ratios: Vec<_> = ztrick_results.values().cloned().collect();
+//     let mut gcd = ratios[0].to_owned();
+//     for n in ratios[1..].iter() {
+//         gcd = gcd.gcd(n);
+//     }
+//     for n in &mut ratios.iter_mut() {
+//         *n = n.div_floor(&gcd);
+//     }
+//     let mut dedup_ratios = ratios.clone();
+//     dedup_ratios.sort();
+//     dedup_ratios.dedup();
+//     let mut ratio_occurances = BTreeMap::new();
+//     for n in &mut dedup_ratios.iter_mut() {
+//         ratio_occurances.insert(n.clone(), 0);
+//     }
+//     for n in &ratios {
+//         *ratio_occurances.get_mut(n).unwrap() += 1;
+//     }
+//     for n in &dedup_ratios {
+//         eprintln!("{}: {}", n, ratio_occurances.get(n).unwrap());
+//     }
+// }
+
 fn main() {
-    let mut vanilla_results = BTreeMap::<_, BigUint>::new();
-    for (y1, y2, y1p) in itertools::iproduct!(
-        (-GAMMA1 + 1..=GAMMA1),
-        (-GAMMA1 + 1..=GAMMA1),
-        (-GAMMA1 + 1..=GAMMA1)
-    ) {
-        merge_results(&mut vanilla_results, &dilithium_vanilla(y1, y2, y1p));
-    }
+    let y1 = 1;
+    let y2 = 0;
+    let y1p = 0;
 
-    let mut ztrick_results = BTreeMap::new();
-    for (y1, y2, y1p) in itertools::iproduct!(
-        (-GAMMA1 + 1..=GAMMA1),
-        (-GAMMA1 + 1..=GAMMA1),
-        (-GAMMA1 + 1..=GAMMA1)
-    ) {
-        merge_results(&mut ztrick_results, &dilithium_ztrick(y1, y2, y1p));
-    }
+    let vanilla_results = dilithium_vanilla(y1, y2, y1p);
+    let ztrick_results = dilithium_ztrick(y1, y2, y1p);
 
-    dbg!(GAMMA1, BETA);
     eprintln!("vanilla:");
     dbg!(is_uniform(&mut vanilla_results.iter()));
+    dbg!(&vanilla_results);
 
-    eprintln!("ztrick:");
-    dbg!(is_uniform(&mut ztrick_results.iter()));
-
-    // Print the amount of possible signatures for this tuple.
-    eprintln!("(z1, z2, c): [vanilla], [ztrick]");
-    for k in vanilla_results.keys() {
-        eprintln!(
-            "{:?}: {}, {}",
-            k,
-            vanilla_results.get(k).map(|x| x).unwrap(),
-            ztrick_results.get(k).map(|x| x).unwrap()
-        );
-    }
+    // eprintln!("ztrick:");
+    // dbg!(is_uniform(&mut ztrick_results.iter()));
+    // dbg!(&ztrick_results);
 }
