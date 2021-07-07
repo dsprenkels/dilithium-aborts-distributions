@@ -236,7 +236,7 @@ fn main() {
         (-GAMMA1 + 1..=GAMMA1),
         (-GAMMA1 + 1..=GAMMA1)
     ) {
-        merge_results(&mut vanilla_results, &dilithium_vanilla(y1, y2, y1p, y2p, None);
+        merge_results(&mut vanilla_results, &dilithium_vanilla(y1, y2, y1p, y2p, None));
     }
 
     let mut ztrick_results = BTreeMap::new();
@@ -246,7 +246,7 @@ fn main() {
         (-GAMMA1 + 1..=GAMMA1),
         (-GAMMA1 + 1..=GAMMA1)
     ) {
-        merge_results(&mut ztrick_results, &dilithium_ztrick(y1, y2, y1p, y2p, None);
+        merge_results(&mut ztrick_results, &dilithium_ztrick(y1, y2, y1p, y2p, None));
     }
 
     eprintln!("vanilla:");
